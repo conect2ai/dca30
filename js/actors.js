@@ -125,3 +125,65 @@ export function makeCar(color, o = {}) {
   }
   return { group: g, wheels, steerers };
 }
+
+// Bichos de quatro patas (bode e gato). Olham para +Z, patas em y = 0.
+export function makeAnimal(spec, shadowTex) {
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const goat = spec.especie === 'bode';
+  const fur = mat(spec.pelo), fur2 = mat(spec.pelo2), dark = mat('#1b1b1e'), white = mat('#f4efe6');
+  const H = goat ? 0.42 : 0.19, bw = goat ? 0.4 : 0.17, bh = goat ? 0.36 : 0.17, bl = goat ? 0.88 : 0.44, lw = goat ? 0.09 : 0.045;
+  box(body, fur, bw, bh, bl, 0, H + bh / 2 - 0.03, 0);
+  const legs = [];
+  for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]) {
+    const p = new THREE.Group(); p.position.set(sx * (bw / 2 - lw / 2), H, sz * (bl / 2 - lw)); body.add(p);
+    const hoof = goat ? 0.07 : 0.035;
+    box(p, fur, lw, H - hoof, lw, 0, -(H - hoof) / 2, 0);
+    box(p, goat ? dark : white, lw + 0.012, hoof, lw + 0.02, 0, -H + hoof / 2, 0.005);
+    legs.push(p);
+  }
+  const head = new THREE.Group(), tail = new THREE.Group(); body.add(head, tail);
+  if (goat) {
+    box(body, fur2, bw + 0.012, 0.15, 0.34, 0, H + bh - 0.1, -0.1);
+    box(body, fur, 0.2, 0.3, 0.2, 0, H + bh - 0.04, bl / 2 + 0.02).rotation.x = 0.95;
+    head.position.set(0, H + bh + 0.07, bl / 2 + 0.2);
+    box(head, fur, 0.2, 0.2, 0.25, 0, 0, 0.02); box(head, white, 0.15, 0.13, 0.15, 0, -0.035, 0.2);
+    box(head, dark, 0.09, 0.03, 0.02, 0, -0.02, 0.277); box(head, dark, 0.07, 0.015, 0.02, 0, -0.075, 0.277);
+    for (const sx of [-1, 1]) {
+      box(head, mat('#e8c34a'), 0.02, 0.05, 0.06, sx * 0.101, 0.035, 0.08); box(head, dark, 0.022, 0.016, 0.045, sx * 0.102, 0.035, 0.08);
+      box(head, mat('#cfc3a0'), 0.05, 0.28, 0.05, sx * 0.065, 0.19, -0.1).rotation.x = -0.8;
+      box(head, fur2, 0.13, 0.04, 0.07, sx * 0.15, 0.03, -0.06).rotation.z = -sx * 0.45;
+    }
+    box(head, white, 0.05, 0.17, 0.05, 0, -0.18, 0.17);                      // a barbicha
+    tail.position.set(0, H + bh - 0.02, -bl / 2); box(tail, fur, 0.06, 0.15, 0.06, 0, 0.06, -0.02).rotation.x = -0.6;
+  } else {
+    for (let i = 0; i < 4; i++) box(body, fur2, bw + 0.006, 0.02, 0.035, 0, H + bh - 0.035, -0.13 + i * 0.085);
+    box(body, white, bw * 0.7, 0.1, 0.02, 0, H + 0.07, bl / 2 + 0.002);
+    head.position.set(0, H + bh + 0.03, bl / 2 + 0.03);
+    box(head, fur, 0.19, 0.16, 0.16, 0, 0, 0); box(head, white, 0.1, 0.06, 0.03, 0, -0.04, 0.08); box(head, mat('#e58fa0'), 0.03, 0.02, 0.012, 0, -0.018, 0.097);
+    const eye = new THREE.MeshBasicMaterial({ color: '#8fd14f' });
+    for (const sx of [-1, 1]) { box(head, fur, 0.06, 0.075, 0.03, sx * 0.065, 0.11, -0.02); box(head, eye, 0.04, 0.036, 0.012, sx * 0.048, 0.02, 0.081); box(head, dark, 0.012, 0.034, 0.014, sx * 0.048, 0.02, 0.082); }
+    tail.position.set(0, H + bh - 0.04, -bl / 2); tail.rotation.x = -0.55; box(tail, fur, 0.04, 0.34, 0.04, 0, 0.17, 0); box(tail, fur2, 0.045, 0.07, 0.045, 0, 0.32, 0);
+  }
+  if (shadowTex) {
+    const s = new THREE.Mesh(new THREE.PlaneGeometry(goat ? 0.9 : 0.5, goat ? 1.4 : 0.8), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));
+    s.rotation.x = -Math.PI / 2; s.position.y = 0.012; g.add(s);
+  }
+  let phase = 0, amp = 0, t = 0, talkT = 0;
+  return {
+    group: g, body, spec,
+    talk(sec) { talkT = sec; },
+    animate(dt, speed) {
+      t += dt; talkT = Math.max(0, talkT - dt);
+      amp += (Math.min(1, speed / 3) - amp) * Math.min(1, dt * 10);
+      phase += dt * (5 + speed * 2.4);
+      const s = Math.sin(phase) * amp * (speed > 4.5 ? 0.95 : 0.7);
+      legs[0].rotation.x = s; legs[3].rotation.x = s; legs[1].rotation.x = -s; legs[2].rotation.x = -s;
+      body.position.y = Math.abs(Math.cos(phase)) * (goat ? 0.03 : 0.015) * amp;
+      const talk = talkT > 0 ? Math.min(1, talkT * 4) : 0;
+      head.rotation.x = -talk * (goat ? 0.75 : 0.45) + Math.sin(phase * 0.5) * 0.06 * amp + (talk ? Math.sin(t * 38) * 0.05 : 0);
+      head.rotation.y = (1 - amp) * (1 - talk) * Math.sin(t * 0.7) * 0.35;
+      tail.rotation.z = Math.sin(t * (goat ? 9 : 2.6)) * (goat ? 0.25 : 0.45);
+      return Math.sin(phase);
+    },
+  };
+}

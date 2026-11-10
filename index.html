@@ -63,11 +63,12 @@ kbd { font: 600 13px var(--font-mono); background: var(--plate); color: var(--in
 #joy { position: absolute; left: var(--gut-l); bottom: var(--gut-b); width: 132px; height: 132px; border-radius: 50%; background: rgba(23,32,38,.45); border: 2px solid rgba(241,236,220,.5); pointer-events: auto; touch-action: none; }
 #joy i { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px; border-radius: 50%; background: rgba(241,236,220,.85); }
 #btn-e { position: absolute; right: var(--gut-r); bottom: calc(var(--gut-b) + 8px); width: 84px; height: 84px; border-radius: 50%; border: 3px solid var(--ink); background: var(--chip); color: var(--ink); font: 700 30px var(--font-display); pointer-events: auto; touch-action: none; box-shadow: 0 5px 0 rgba(0,0,0,.45); }
+#btn-voz { position: absolute; right: calc(var(--gut-r) + 6px); bottom: calc(var(--gut-b) + 108px); width: 72px; height: 48px; border-radius: 24px; border: 2px solid var(--ink); background: var(--plate); color: var(--ink); font: 700 15px var(--font-display); letter-spacing: .04em; text-transform: uppercase; pointer-events: auto; touch-action: none; box-shadow: 0 4px 0 rgba(0,0,0,.45); }
 #btn-e:disabled { background: rgba(23,32,38,.45); color: rgba(241,236,220,.5); border-color: rgba(241,236,220,.4); box-shadow: none; }
 body.touch #radar { top: calc(var(--gut-t) + 44px); bottom: auto; width: 104px; height: 104px; }
 body.touch #zone { bottom: auto; top: calc(var(--gut-t) + 64px); font-size: 20px; }
-body.touch #prompt { bottom: calc(var(--gut-b) + 150px); }
-body.touch #sub { bottom: calc(var(--gut-b) + 104px); width: calc(100% - 32px); font-size: 15px; }
+body.touch #prompt { bottom: calc(var(--gut-b) + 232px); }
+body.touch #sub { bottom: calc(var(--gut-b) + 168px); width: calc(100% - 32px); font-size: 15px; }
 body.touch #toast { top: calc(var(--gut-t) + 158px); width: max-content; font-size: 14px; }
 @media (orientation: landscape) { body.touch #toast { top: var(--gut-t); max-width: 42%; } }
 
@@ -83,11 +84,11 @@ h1 { margin: 0; font: italic 700 clamp(30px, 8vw, 40px)/1 var(--font-display); l
 .plate-white p { margin: 6px 0 0; font: 600 14px var(--font-body); color: #4b565d; }
 .eyebrow { font: 700 12px var(--font-display); letter-spacing: .14em; text-transform: uppercase; color: var(--chip); margin: 0 0 6px; }
 .brief p { margin: 0; color: var(--wall); max-width: 46ch; }
-.chars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.chars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .char { background: var(--slate-2); border: 2px solid transparent; border-radius: 6px; padding: 4px 4px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; min-width: 0; }
 .char img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; display: block; }
-.char b { font: 700 14px var(--font-display); letter-spacing: .03em; }
-.char span { font-size: 11.5px; line-height: 1.25; color: var(--wall-dim); }
+.char b { font: 700 13px var(--font-display); letter-spacing: .02em; }
+.char span { font-size: 10.5px; line-height: 1.2; color: var(--wall-dim); }
 .char[aria-pressed="true"] { border-color: var(--chip); background: #2e3d47; }
 .go { background: var(--fire); color: #fff; border: 0; border-radius: 6px; padding: 14px 18px; font: italic 700 22px var(--font-display); letter-spacing: .03em; box-shadow: 0 4px 0 #7d1410; }
 .go:active { transform: translateY(3px); box-shadow: 0 1px 0 #7d1410; }
@@ -125,7 +126,7 @@ h1 { margin: 0; font: italic 700 clamp(30px, 8vw, 40px)/1 var(--font-display); l
 <div id="hud" hidden>
   <div id="counters">
     <div id="chips" aria-live="polite"><span class="chip-ico"></span><span><b id="chip-n">00</b><i>/30</i></span></div>
-    <div id="fotos">Fotos <b id="foto-n">0</b>/7</div>
+    <div id="fotos">Fotos <b id="foto-n">0</b>/<span id="foto-t">12</span></div>
   </div>
   <div id="zone"></div>
   <canvas id="radar" width="300" height="300" aria-hidden="true"></canvas>
@@ -135,6 +136,7 @@ h1 { margin: 0; font: italic 700 clamp(30px, 8vw, 40px)/1 var(--font-display); l
   <div id="sysbtns"><button id="btn-menu" type="button">Menu</button><button id="btn-som" type="button" aria-pressed="true">Som ligado</button></div>
   <div id="touch" hidden>
     <div id="joy" aria-label="Alavanca de movimento"><i></i></div>
+    <button id="btn-voz" type="button" aria-label="Voz do personagem">Voz</button>
     <button id="btn-e" type="button" aria-label="Interagir" disabled>E</button>
   </div>
 </div>
@@ -147,7 +149,7 @@ h1 { margin: 0; font: italic 700 clamp(30px, 8vw, 40px)/1 var(--font-display); l
     </div>
     <div class="brief">
       <p class="eyebrow">Missão 01 · Trinta anos, trinta chips</p>
-      <p>Trinta chips dourados estão espalhados pelo prédio, um para cada ano. Encontre todos, visite os pontos de foto e pegue o carro no estacionamento dos fundos.</p>
+      <p>Trinta chips dourados estão espalhados pelo prédio, um para cada ano. Encontre todos nos dois andares, visite os pontos de foto e pegue o carro no estacionamento dos fundos.</p>
     </div>
     <div>
       <p class="eyebrow">Quem vai explorar</p>
@@ -158,6 +160,7 @@ h1 { margin: 0; font: italic 700 clamp(30px, 8vw, 40px)/1 var(--font-display); l
       <li><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> andar</li>
       <li><kbd>Shift</kbd> correr</li>
       <li><kbd>E</kbd> interagir</li>
+      <li><kbd>Espaço</kbd> voz do personagem</li>
       <li>Arraste o mouse para olhar</li>
       <li><kbd>←</kbd> <kbd>→</kbd> girar a câmera</li>
     </ul>
@@ -165,6 +168,7 @@ h1 { margin: 0; font: italic 700 clamp(30px, 8vw, 40px)/1 var(--font-display); l
       <li>Alavanca à esquerda para andar</li>
       <li>Arraste a tela para olhar</li>
       <li>Botão E para interagir</li>
+      <li>Botão Voz para o personagem falar</li>
     </ul>
     <p class="foot" id="evento"></p>
   </div>

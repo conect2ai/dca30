@@ -1,9 +1,11 @@
 // DCA 30 Anos · laço principal, controles, câmera, HUD, radar e som.
 import * as THREE from '../vendor/three.min.js';
-import { CONFIG, PERSONAGENS, FALAS, PORTAS_TRANCADAS, GALERIA, FOTOS, CHIPS } from './config.js';
+import { CONFIG, PERSONAGENS, BICHOS, FALAS, PORTAS_TRANCADAS, GALERIA, FOTOS, CHIPS, VOZES, REACOES } from './config.js';
 import { makeTextures } from './textures.js';
 import { buildWorld, merge } from './world.js';
-import { makeCharacter, makeCar } from './actors.js';
+import { makeCharacter, makeAnimal, makeCar } from './actors.js';
+
+const makeActor = (spec, shadow) => (spec.especie ? makeAnimal(spec, shadow) : makeCharacter(spec, shadow));
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -36,7 +38,7 @@ const colliders = world.colliders;
 // ───────────── Estado ─────────────
 const S = {
   mode: 'menu', started: false, overlay: null, sel: 0, muted: false,
-  x: 54.2, z: -23, heading: 0, speed: 0,
+  x: 32.2, z: -23, y: 0, heading: 0, speed: 0, boost: 0, voiceK: 0, voiceT: 0, camH: 1.5,
   yaw: Math.PI, pitch: 0.2, dist: 3.5, camDist: 3.5, lastLook: -9,
   inCar: false, chips: 0, fotos: new Set(), t0: 0, time: 0, done: false,
   zone: '', doorK: 0, galK: 0,
@@ -47,40 +49,43 @@ let player = null;
 const chipGeo = { body: new THREE.BoxGeometry(0.3, 0.3, 0.07), gold: merge([new THREE.BoxGeometry(0.42, 0.2, 0.03), new THREE.BoxGeometry(0.2, 0.42, 0.03), new THREE.BoxGeometry(0.1, 0.1, 0.08)]) };
 const chipMat = { body: new THREE.MeshLambertMaterial({ color: '#23262b' }), gold: new THREE.MeshBasicMaterial({ color: '#f4b63a' }) };
 const glowMat = new THREE.SpriteMaterial({ map: T.glow, color: '#ffc94a', transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
-const chips = CHIPS.map(([x, z], i) => {
+const chips = CHIPS.map(([x, z, y = 0], i) => {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(chipGeo.body, chipMat.body), new THREE.Mesh(chipGeo.gold, chipMat.gold));
   const glow = new THREE.Sprite(glowMat); glow.scale.set(1.3, 1.3, 1); g.add(glow);
-  g.position.set(x, 1.05, z); scene.add(g);
-  return { x, z, g, got: false, t: 0, ph: i * 0.7 };
+  g.position.set(x, y + 1.05, z); scene.add(g);
+  return { x, z, y, g, got: false, t: 0, ph: i * 0.7 };
 });
 const fotos = FOTOS.map((f, i) => {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.camIcon, transparent: true, depthWrite: false }));
-  s.scale.set(0.6, 0.6, 1); s.position.set(f.x, 1.95, f.z); scene.add(s);
-  return { ...f, s, ph: i };
+  s.scale.set(0.6, 0.6, 1); s.position.set(f.x, (f.y || 0) + 1.95, f.z); scene.add(s);
+  return { ...f, y: f.y || 0, s, ph: i };
 });
-const car = { x: -9.5, z: -13, h: 0, v: 0, steer: 0, model: makeCar('#d3261f', { plate: T.plateCar, shadow: T.shadow }) };
+const car = { x: -34, z: 4, h: 0, v: 0, steer: 0, model: makeCar('#d3261f', { plate: T.plateCar, shadow: T.shadow }) };
 scene.add(car.model.group);
 
 const npcSpecs = [
-  { key: 'corredor1', nome: 'Monitor', spec: { ...PERSONAGENS[1], camisa: '#6b8e3a', mochila: null }, route: [[8, 0.6], [46, 0.6], [46, -0.6], [8, -0.6]] },
-  { key: 'corredor2', nome: 'Doutoranda', spec: { ...PERSONAGENS[0], camisa: '#8a3f7a', cabelo: '#3a2416', mochila: '#2a2d33' }, route: [[58, 0.5], [51.5, 0], [51.5, -4], [54.2, -7], [54.2, -11], [54.2, -7], [51.5, -4], [51.5, 0]] },
-  { key: 'jardim', nome: 'Egressa', spec: { ...PERSONAGENS[2], camisa: '#c4532f', oculos: false, estilo: 'longo' }, route: [[54.2, -17], [54.2, -24], [67, -24], [54.2, -24]] },
-  { key: 'estacionamento', nome: 'Porteiro', spec: { ...PERSONAGENS[3], camisa: '#2c3e57', cabelo: '#222', estilo: 'curto', oculos: false }, route: [[-8, -6], [-26, -8], [-26, 8], [-8, 6]] },
-  { key: 'lab', nome: 'Professor', spec: PERSONAGENS[3], at: [21.6, 5.3, Math.PI / 2] },
-  { key: 'hall', nome: 'Secretária', spec: { ...PERSONAGENS[4], jaleco: false, camisa: '#b23a48', estilo: 'coque' }, at: [56.2, -5.2, -2.2] },
+  { key: 'corredor1', nome: 'Monitor', spec: { ...PERSONAGENS[1], camisa: '#6b8e3a', mochila: null }, route: [[3, 0.6], [40, 0.6], [40, -0.6], [3, -0.6]] },
+  { key: 'corredor2', nome: 'Doutoranda', spec: { ...PERSONAGENS[0], camisa: '#8a3f7a', cabelo: '#3a2416', mochila: '#2a2d33' }, route: [[40, 0.5], [29.5, 0], [29.5, -4], [32.2, -7], [32.2, -11], [32.2, -7], [29.5, -4], [29.5, 0]] },
+  { key: 'jardim', nome: 'Egressa', spec: { ...PERSONAGENS[2], camisa: '#c4532f', oculos: false, estilo: 'longo' }, route: [[32.2, -17], [32.2, -24], [44, -24], [32.2, -24]] },
+  { key: 'estacionamento', nome: 'Porteiro', spec: { ...PERSONAGENS[3], camisa: '#2c3e57', cabelo: '#222', estilo: 'curto', oculos: false }, route: [[-8, 12.6], [10, 12.6], [10, 20], [-8, 20]] },
+  { key: 'lab', nome: 'Professor', spec: PERSONAGENS[3], at: [11.0, 5.3, Math.PI / 2] },
+  { key: 'hall', nome: 'Secretária', spec: { ...PERSONAGENS[4], jaleco: false, camisa: '#b23a48', estilo: 'coque' }, at: [34.2, -5.2, -2.2] },
+  { key: 'bode', nome: 'Bode', bicho: 'bode', spec: BICHOS.bode, speed: 1.0, route: [[24, -28], [17, -18.5], [25, -15.5], [39, -21.5], [48, -27], [36, -29]] },
+  { key: 'gato', nome: 'Gato', bicho: 'gato', spec: BICHOS.gato, at: [35.7, -8.95, Math.PI], y: 0.45 },
 ];
 const npcs = npcSpecs.map((n) => {
-  const char = makeCharacter(n.spec, T.shadow);
+  const char = makeActor(n.spec, n.y ? null : T.shadow);
   const [x, z, h] = n.at || [n.route[0][0], n.route[0][1], 0];
-  char.group.position.set(x, FLOOR, z); char.group.rotation.y = h || 0; scene.add(char.group);
+  char.group.position.set(x, FLOOR + (n.y || 0), z); char.group.rotation.y = h || 0; scene.add(char.group);
   return { ...n, char, x, z, h: h || 0, i: 1, k: 0, warn: 0 };
 });
 
 // ───────────── Colisão ─────────────
-function resolveCircle(p, r) {
+function resolveCircle(p, r, lv = 0) {
   let moved = false;
   for (let it = 0; it < 2; it++) for (const c of colliders) {
+    if (c.lv !== lv && c.lv !== 2) continue;
     const cx = clamp(p.x, c.x0, c.x1), cz = clamp(p.z, c.z0, c.z1);
     const dx = p.x - cx, dz = p.z - cz, d2 = dx * dx + dz * dz;
     if (d2 >= r * r) continue;
@@ -93,10 +98,10 @@ function resolveCircle(p, r) {
   }
   return moved;
 }
-function rayWalls(ox, oz, dx, dz) {
+function rayWalls(ox, oz, dx, dz, lv = 0) {
   let best = 1; const m = 0.12;
   for (const c of colliders) {
-    if (!c.wall) continue;
+    if (!c.wall || (c.lv !== lv && c.lv !== 2)) continue;
     let t0 = 0, t1 = 1, ok = true;
     for (const [o, d, lo, hi] of [[ox, dx, c.x0 - m, c.x1 + m], [oz, dz, c.z0 - m, c.z1 + m]]) {
       if (Math.abs(d) < 1e-9) { if (o < lo || o > hi) { ok = false; break; } }
@@ -138,12 +143,50 @@ const Snd = {
   talk() { this.tone(330, 0, 0.05, 'triangle', 0.1); this.tone(392, 0.06, 0.07, 'triangle', 0.1); },
   click() { this.tone(240, 0, 0.05, 'square', 0.07); },
   fanfare() { [523, 659, 784, 1047, 784, 1047, 1319].forEach((f, i) => this.tone(f, i * 0.13, i === 6 ? 0.7 : 0.16, 'square', 0.13)); },
+  // Vozes sintetizadas. O bode ri em "bé-hé-hé" e o gato alterna um miado normal com um bem fanho.
+  voiceChain(type, formants, dur, vol = 0.9) {
+    const c = this.ctx, t = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.type = type; g.gain.setValueAtTime(0.0001, t);
+    const fs = formants.map(([f, q, gain]) => { const b = c.createBiquadFilter(); b.type = 'bandpass'; b.frequency.value = f; b.Q.value = q; const bg = c.createGain(); bg.gain.value = gain * vol; o.connect(b); b.connect(bg); bg.connect(g); return b; });
+    const trem = c.createGain(); g.connect(trem); trem.connect(this.master); o.start(t); o.stop(t + dur + 0.1);
+    return { o, g, fs, t, c, trem };
+  },
+  // Berro curto de bode, perto do real: tom áspero com tremor rápido e leve queda no fim.
+  bleat() {
+    if (this.file('bode') || !this.ctx) return;
+    const dur = 0.85, { o, g, t, c, trem } = this.voiceChain('sawtooth', [[720, 3, 1], [1650, 4.5, 0.55], [2600, 6, 0.2]], dur, 1.0);
+    const f0 = 340 + Math.random() * 50;
+    o.frequency.setValueAtTime(f0 * 0.96, t); o.frequency.linearRampToValueAtTime(f0 * 1.04, t + 0.12); o.frequency.linearRampToValueAtTime(f0 * 0.9, t + dur);
+    const lfo = c.createOscillator(), lg = c.createGain(), ag = c.createGain();
+    lfo.frequency.setValueAtTime(24, t); lfo.frequency.linearRampToValueAtTime(19, t + dur); lg.gain.value = 9; ag.gain.value = 0.32;
+    lfo.connect(lg); lg.connect(o.frequency); lfo.connect(ag); ag.connect(trem.gain); lfo.start(t); lfo.stop(t + dur + 0.1);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.06); g.gain.setValueAtTime(0.5, t + dur - 0.3); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  },
+  // Miado simples: sobe rápido no "mi", abre no "a" e cai no "u".
+  meow() {
+    if (this.file('gato') || !this.ctx) return;
+    const dur = 0.62, { o, g, fs, t } = this.voiceChain('triangle', [[800, 3, 1], [1900, 5, 0.5]], dur, 1.0);
+    const k = 0.94 + Math.random() * 0.12;
+    o.frequency.setValueAtTime(560 * k, t); o.frequency.exponentialRampToValueAtTime(790 * k, t + 0.12); o.frequency.exponentialRampToValueAtTime(700 * k, t + 0.34); o.frequency.exponentialRampToValueAtTime(470 * k, t + dur);
+    fs[0].frequency.setValueAtTime(500, t); fs[0].frequency.exponentialRampToValueAtTime(1050, t + 0.22); fs[0].frequency.exponentialRampToValueAtTime(620, t + dur);
+    fs[1].frequency.setValueAtTime(2500, t); fs[1].frequency.exponentialRampToValueAtTime(1800, t + 0.25); fs[1].frequency.exponentialRampToValueAtTime(1100, t + dur);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.05); g.gain.setValueAtTime(0.45, t + dur - 0.25); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  },
+  // Toca um arquivo de áudio configurado em CONFIG.sons. Devolve false se não houver arquivo.
+  file(key) {
+    const url = CONFIG.sons?.[key]; if (!url || S.muted) return !!url;
+    (this.cache ||= {})[key] ||= new Audio(url);
+    const a = this.cache[key]; a.currentTime = 0; a.volume = 0.9; a.play().catch(() => {});
+    return true;
+  },
+  whistle() { if (!this.ctx) return; const t = this.ctx.currentTime; for (const [d, a, b] of [[0, 1300, 1900], [0.2, 1500, 1100]]) { const o = this.ctx.createOscillator(), g = this.ctx.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(a, t + d); o.frequency.exponentialRampToValueAtTime(b, t + d + 0.16); g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.16, t + d + 0.03); g.gain.exponentialRampToValueAtTime(0.001, t + d + 0.18); o.connect(g); g.connect(this.master); o.start(t + d); o.stop(t + d + 0.2); } },
+  robot() { [660, 880, 550, 990].forEach((f, i) => this.tone(f, i * 0.09, 0.07, 'square', 0.1)); },
   engine(on, v) { if (!this.ctx) return; const t = this.ctx.currentTime; this.engGain.gain.setTargetAtTime(on ? 0.09 : 0, t, 0.08); this.eng.frequency.setTargetAtTime(48 + Math.abs(v) * 9, t, 0.08); },
   mute(m) { if (this.master) this.master.gain.value = m ? 0 : 0.5; },
 };
 
 // ───────────── HUD ─────────────
-const el = { hud: $('hud'), menu: $('menu'), chipN: $('chip-n'), chips: $('chips'), fotoN: $('foto-n'), zone: $('zone'), prompt: $('prompt'), sub: $('sub'), toast: $('toast'), foto: $('foto'), term: $('term'), fim: $('fim'), btnE: $('btn-e') };
+const el = { hud: $('hud'), menu: $('menu'), chipN: $('chip-n'), chips: $('chips'), fotoN: $('foto-n'), btnV: $('btn-voz'), zone: $('zone'), prompt: $('prompt'), sub: $('sub'), toast: $('toast'), foto: $('foto'), term: $('term'), fim: $('fim'), btnE: $('btn-e') };
 let subTimer = 0, toastTimer = 0, zoneTimer = 0;
 function say(who, text, dur = 4.2) { el.sub.hidden = false; el.sub.firstElementChild.textContent = who || ''; el.sub.lastElementChild.textContent = text; subTimer = S.time + dur + text.length * 0.03; }
 function toast(text, dur = 4) { el.toast.hidden = false; el.toast.textContent = text; toastTimer = S.time + dur; }
@@ -162,7 +205,7 @@ function openTerminal() {
     `chips coletados ....... ${String(S.chips).padStart(2, '0')}/${CONFIG.totalChips}`,
     `fotos visitadas ....... ${S.fotos.size}/${fotos.length}`,
     `tempo de tour ......... ${fmtTime(S.time - S.t0)}`, '',
-    near ? `> dica do sistema. O chip mais próximo está em ${world.zone(near.x, near.z)}, a ${Math.round(nd)} m daqui.` : '> todos os chips foram encontrados. Bom trabalho!',
+    near ? `> dica do sistema. O chip mais próximo está em ${world.zone(near.x, near.z, near.y)}, a ${Math.round(nd)} m daqui.` : '> todos os chips foram encontrados. Bom trabalho!',
     '', 'dca@labgrad:~$ _',
   ].join('\n');
   const pre = el.term.firstElementChild; pre.textContent = ''; openOverlay('term');
@@ -173,7 +216,7 @@ function openTerminal() {
 function openFoto(f) {
   const img = el.foto.querySelector('img'); img.src = f.arquivo; img.alt = f.legenda;
   el.foto.querySelector('b').textContent = f.legenda; openOverlay('foto');
-  if (!S.fotos.has(f.id)) { S.fotos.add(f.id); el.fotoN.textContent = S.fotos.size; f.s.material.opacity = 0.5; Snd.tone(880, 0, 0.05, 'triangle'); Snd.tone(1175, 0.06, 0.12, 'triangle');
+  if (!S.fotos.has(f.id)) { S.fotos.add(f.id); el.fotoN.textContent = S.fotos.size; Snd.tone(880, 0, 0.05, 'triangle'); Snd.tone(1175, 0.06, 0.12, 'triangle');
     if (S.fotos.size === fotos.length) toast('Álbum completo. Você visitou todos os pontos de foto.'); }
 }
 
@@ -186,16 +229,42 @@ const actions = {
   quadrobranco: () => say('', 'Alguém deixou um recado no canto do quadro. "Não apague!" Está lá desde sempre.'),
   mural: () => say('Mural', `${CONFIG.evento}. Programação especial pelos 30 anos de Engenharia de Computação.`, 6),
   banner: () => say('', 'O ENADE vem aí. Estudar também é missão.'),
+  cafe: () => { Snd.tone(180, 0, 0.25, 'sawtooth', 0.05); Snd.tone(700, 0.3, 0.08, 'triangle', 0.1); S.boost = S.time + 40; say('', 'Café passado na hora. Você vai andar mais rápido pelos próximos 40 segundos.', 4); },
+  recado: () => say('', 'Um bilhete na mesa diz "Volto em 5 minutos. Fui pegar um café na copa."'),
+  pauta: () => say('', 'Pauta da reunião. Item único, comemorar os 30 anos de Engenharia de Computação.'),
+  elevador: () => { Snd.click(); say('', 'O elevador está em manutenção. A escada fica logo ao lado.'); },
 };
 function findTarget() {
   if (S.inCar) return Math.abs(car.v) < 3.5 ? { label: 'Sair do carro', act: exitCar } : null;
   let best = null, bs = 1;
   const test = (x, z, r, o) => { const s = Math.hypot(S.x - x, S.z - z) / r; if (s < bs) { bs = s; best = o; } };
-  for (const it of world.inter) test(it.x, it.z, it.r, { label: it.label, act: actions[it.kind] });
-  for (const n of npcs) test(n.x, n.z, 1.8, { label: `Conversar com ${n.nome}`, act: () => { Snd.talk(); const f = FALAS[n.key]; say(n.nome, f[n.k++ % f.length]); } });
-  for (const f of fotos) test(f.x, f.z, 1.4, { label: 'Ver a foto real', act: () => openFoto(f) });
-  test(car.x, car.z, 2.7, { label: 'Entrar no carro', act: enterCar });
+  for (const it of world.inter) if (Math.abs((it.y || 0) - S.y) < 1) test(it.x, it.z, it.r, { label: it.label, act: actions[it.kind] });
+  for (const f of fotos) if (Math.abs(f.y - S.y) < 1) test(f.x, f.z, 1.4, { label: 'Ver a foto real', act: () => openFoto(f) });
+  if (S.y < 1) {
+    for (const n of npcs) {
+      if (n.bicho) test(n.x, n.z, 1.7, { label: n.bicho === 'gato' ? 'Fazer carinho no gato' : 'Chamar o bode', act: () => animalVoice(n) });
+      else test(n.x, n.z, 1.8, { label: `Conversar com ${n.nome}`, act: () => { Snd.talk(); const f = FALAS[n.key]; say(n.nome, f[n.k++ % f.length]); } });
+    }
+    test(car.x, car.z, 2.7, { label: 'Entrar no carro', act: enterCar });
+  }
   return best;
+}
+function animalVoice(n) {
+  if (n.bicho === 'bode') Snd.bleat(); else Snd.meow();
+  n.char.talk?.(0.8); say(n.nome, VOZES[n.bicho][0], 1.3);
+}
+// A voz do personagem do jogador, na barra de espaço.
+function voice() {
+  if (S.mode !== 'play' || S.overlay || S.time < S.voiceT) return;
+  const spec = player.spec, kind = spec.especie || (spec.estilo === 'robo' ? 'robo' : 'humano');
+  S.voiceT = S.time + 0.9;
+  if (kind === 'bode') Snd.bleat(); else if (kind === 'gato') Snd.meow(); else if (kind === 'robo') Snd.robot(); else Snd.whistle();
+  player.talk?.(0.8);
+  say(spec.nome, VOZES[kind][0], 1.3);
+  if (S.inCar || S.y > 1) return;
+  let who = null, wd = 6;
+  for (const n of npcs) { if (n.bicho) continue; const d = Math.hypot(n.x - S.x, n.z - S.z); if (d < wd && S.time > n.warn) { wd = d; who = n; } }
+  if (who) { who.warn = S.time + 7; const rs = REACOES[kind], line = rs[who.k++ % rs.length]; setTimeout(() => { if (S.mode === 'play') say(who.nome, line, 3); }, 1300); }
 }
 let target = null;
 function interact() {
@@ -210,7 +279,7 @@ function exitCar() {
     resolveCircle(q, 0.34);
     if (Math.hypot(q.x - p.x, q.z - p.z) < 0.3 || side === -1) { S.x = q.x; S.z = q.z; break; }
   }
-  S.inCar = false; car.v = 0; player.group.visible = true; S.dist = 3.5; S.heading = car.h; Snd.click();
+  S.inCar = false; car.v = 0; player.group.visible = true; S.dist = player.spec.cam?.d ?? 3.5; S.heading = car.h; Snd.click();
 }
 
 // ───────────── Entrada ─────────────
@@ -223,7 +292,8 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (e.code === 'Escape') { if (S.overlay) closeOverlay(); else if (S.started && !S.done) toggleMenu(S.mode === 'play'); return; }
   if (S.mode !== 'play') { if (e.code === 'Enter') start(); return; }
-  if (e.code === 'KeyE' || e.code === 'Enter' || e.code === 'Space') { interact(); return; }
+  if (e.code === 'KeyE' || e.code === 'Enter') { interact(); return; }
+  if (e.code === 'Space') { if (S.overlay) closeOverlay(); else voice(); return; }
   if (e.code === 'KeyM') { setMuted(!S.muted); return; }
   keys.add(e.code);
 });
@@ -250,6 +320,7 @@ joyEl.addEventListener('pointermove', (e) => { if (joy.id === e.pointerId) joySe
 const joyEnd = (e) => { if (joy.id === e.pointerId) { joy.id = null; joy.x = joy.y = 0; knob.style.transform = ''; } };
 joyEl.addEventListener('pointerup', joyEnd); joyEl.addEventListener('pointercancel', joyEnd);
 el.btnE.addEventListener('click', interact);
+el.btnV.addEventListener('click', voice);
 el.foto.addEventListener('click', closeOverlay); el.term.addEventListener('click', closeOverlay);
 
 function setMuted(m) { S.muted = m; Snd.mute(m); const b = $('btn-som'); b.textContent = m ? 'Som desligado' : 'Som ligado'; b.setAttribute('aria-pressed', String(!m)); }
@@ -259,6 +330,7 @@ $('btn-fim').addEventListener('click', () => { el.fim.hidden = true; S.overlay =
 
 // ───────────── Menu e seleção de personagem ─────────────
 function buildMenu() {
+  $('foto-t').textContent = fotos.length;
   $('titulo').textContent = CONFIG.titulo; $('subtitulo').textContent = CONFIG.subtitulo; $('evento').textContent = CONFIG.evento;
   if (touch) { document.body.classList.add('touch'); $('keys-desk').hidden = true; $('keys-touch').hidden = false; $('touch').hidden = false; }
   const w = 180, h = 200;
@@ -268,7 +340,7 @@ function buildMenu() {
     r2.setPixelRatio(2); r2.setSize(w, h);
     const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight('#ffffff', '#8a8f96', 2.6)); const d = new THREE.DirectionalLight('#fff', 1.6); d.position.set(2, 4, 5); sc.add(d);
     const cam = new THREE.PerspectiveCamera(28, w / h, 0.1, 20); cam.position.set(1.3, 1.45, 4.1); cam.lookAt(0, 0.9, 0);
-    thumbs = PERSONAGENS.map((spec) => { const c = makeCharacter(spec); c.group.rotation.y = 0.45; c.animate(0.2, 2.4); sc.add(c.group); r2.render(sc, cam); const url = r2.domElement.toDataURL(); sc.remove(c.group); return url; });
+    thumbs = PERSONAGENS.map((spec) => { const c = makeActor(spec); c.group.rotation.y = spec.especie ? 0.95 : 0.45; if (spec.thumb) c.group.scale.setScalar(spec.thumb); c.animate(0.2, 2.4); sc.add(c.group); r2.render(sc, cam); const url = r2.domElement.toDataURL(); sc.remove(c.group); return url; });
     r2.dispose(); r2.forceContextLoss?.();
   } catch (e) { /* sem miniaturas, o menu continua funcionando */ }
   const box = $('chars');
@@ -285,12 +357,13 @@ function buildMenu() {
 function spawnPlayer() {
   if (player && player.spec === PERSONAGENS[S.sel]) return;
   if (player) scene.remove(player.group);
-  player = makeCharacter(PERSONAGENS[S.sel], T.shadow); scene.add(player.group); player.group.visible = !S.inCar;
+  player = makeActor(PERSONAGENS[S.sel], T.shadow); scene.add(player.group); player.group.visible = !S.inCar;
+  S.camH = player.spec.cam?.h ?? 1.5; if (!S.inCar) S.dist = player.spec.cam?.d ?? 3.5;
 }
 function start() {
   Snd.init(); spawnPlayer();
   el.menu.hidden = true; el.hud.hidden = false; S.mode = 'play';
-  if (!S.started) { S.started = true; S.t0 = S.time; setZone(world.zone(S.x, S.z)); toast('Missão 01. Encontre os 30 chips dourados. A entrada do DCA está logo à frente.', 6); }
+  if (!S.started) { S.started = true; S.t0 = S.time; setZone(world.zone(S.x, S.z, S.y)); toast('Missão 01. Encontre os 30 chips dourados. A entrada do DCA está logo à frente.', 6); }
   canvas.focus();
 }
 function toggleMenu(open) {
@@ -317,7 +390,7 @@ function control(dt) {
     let hit = 0;
     for (const off of [1.35, 0, -1.35]) {
       const p = { x: car.x + Math.sin(car.h) * off, z: car.z + Math.cos(car.h) * off }, q = { ...p };
-      if (resolveCircle(q, 0.95)) { car.x += q.x - p.x; car.z += q.z - p.z; hit = Math.max(hit, Math.hypot(q.x - p.x, q.z - p.z)); }
+      if (resolveCircle(q, 0.95, 0)) { car.x += q.x - p.x; car.z += q.z - p.z; hit = Math.max(hit, Math.hypot(q.x - p.x, q.z - p.z)); }
     }
     if (hit > 0.001) { car.v *= hit > 0.04 ? 0.55 : 1 - Math.min(1, 3 * dt); if (hit > 0.08 && Math.abs(car.v) > 2) Snd.tone(90, 0, 0.12, 'sawtooth', 0.12); }
     S.x = car.x; S.z = car.z; S.speed = Math.abs(car.v);
@@ -330,11 +403,11 @@ function control(dt) {
   if (m > 1) { ix /= m; iy /= m; }
   const run = keys.has('ShiftLeft') || keys.has('ShiftRight') || Math.hypot(joy.x, joy.y) > 0.92;
   const mx = fx * iy + rx * ix, mz = fz * iy + rz * ix, mm = Math.hypot(mx, mz);
-  const sp = mm > 0.05 ? (run ? 6.4 : 3.5) * Math.min(1, mm) : 0;
+  const sp = mm > 0.05 ? (run ? 6.4 : 3.5) * Math.min(1, mm) * (S.time < S.boost ? 1.4 : 1) : 0;
   S.speed += (sp - S.speed) * Math.min(1, dt * 12);
   if (mm > 0.05) {
     const p = { x: S.x + (mx / mm) * S.speed * dt, z: S.z + (mz / mm) * S.speed * dt };
-    resolveCircle(p, 0.32); S.x = p.x; S.z = p.z;
+    resolveCircle(p, 0.32, S.y > 1.9 ? 1 : 0); S.x = p.x; S.z = p.z;
     S.heading += angDiff(Math.atan2(mx, mz), S.heading) * Math.min(1, dt * 12);
     if (iy > -0.3 && S.time - S.lastLook > 0.9 && !look) S.yaw += angDiff(Math.atan2(-mx, -mz), S.yaw) * Math.min(1, dt * 1.5);
   }
@@ -348,8 +421,9 @@ function update(dt) {
   if (playing && !S.overlay) control(dt); else if (S.inCar) { car.v *= 1 - Math.min(1, dt * 3); Snd.engine(playing, car.v); }
 
   // Jogador e carro
+  if (!S.inCar) S.y += (world.floorY(S.x, S.z, S.y) - S.y) * Math.min(1, dt * 16);
   if (player) {
-    player.group.position.set(S.x, FLOOR, S.z); player.group.rotation.y = S.heading;
+    player.group.position.set(S.x, FLOOR + S.y, S.z); player.group.rotation.y = S.heading;
     const s = player.animate(dt, S.inCar ? 0 : S.speed);
     if (!S.inCar && S.speed > 1 && playing && Math.sign(s) !== lastStep) { lastStep = Math.sign(s); Snd.step(); }
   }
@@ -365,44 +439,45 @@ function update(dt) {
     if (n.route && (dp > 1.9 || S.inCar)) {
       const [tx, tz] = n.route[n.i], dx = tx - n.x, dz = tz - n.z, d = Math.hypot(dx, dz);
       if (d < 0.15) n.i = (n.i + 1) % n.route.length;
-      else { sp = 1.35; n.x += (dx / d) * sp * dt; n.z += (dz / d) * sp * dt; n.h += angDiff(Math.atan2(dx, dz), n.h) * Math.min(1, dt * 6); }
+      else { sp = n.speed || 1.35; n.x += (dx / d) * sp * dt; n.z += (dz / d) * sp * dt; n.h += angDiff(Math.atan2(dx, dz), n.h) * Math.min(1, dt * 6); }
     } else if (dp < 2.4 && !S.inCar) n.h += angDiff(Math.atan2(S.x - n.x, S.z - n.z), n.h) * Math.min(1, dt * 5);
     else if (n.at) n.h += angDiff(n.at[2], n.h) * Math.min(1, dt * 2);
-    if (S.inCar && dp < 3.2 && Math.abs(car.v) > 3 && S.time > n.warn) { n.warn = S.time + 5; say(n.nome, 'Ei! Olha o carro! Aqui é zona de pedestre.', 2.5); }
-    n.char.group.position.set(n.x, FLOOR, n.z); n.char.group.rotation.y = n.h; n.char.animate(dt, sp);
+    if (S.inCar && dp < 3.2 && Math.abs(car.v) > 3 && S.time > n.warn) { n.warn = S.time + 5; if (n.bicho) animalVoice(n); else say(n.nome, 'Ei! Olha o carro! Aqui é zona de pedestre.', 2.5); }
+    n.char.group.position.set(n.x, FLOOR + (n.y || 0), n.z); n.char.group.rotation.y = n.h; n.char.animate(dt, sp);
   }
 
   // Chips e pontos de foto
   for (const c of chips) {
     if (c.got) { if (c.g.visible) { c.t += dt; c.g.position.y += dt * 3; c.g.scale.setScalar(Math.max(0.01, 1 - c.t * 3)); if (c.t > 0.33) c.g.visible = false; } continue; }
-    c.g.rotation.y = S.time * 2 + c.ph; c.g.position.y = 1.05 + Math.sin(S.time * 2.4 + c.ph) * 0.09;
-    if (playing && Math.hypot(S.x - c.x, S.z - c.z) < (S.inCar ? 1.7 : 0.85)) collect(c);
+    c.g.rotation.y = S.time * 2 + c.ph; c.g.position.y = c.y + 1.05 + Math.sin(S.time * 2.4 + c.ph) * 0.09;
+    if (playing && Math.abs(S.y - c.y) < 1.2 && Math.hypot(S.x - c.x, S.z - c.z) < (S.inCar ? 1.7 : 0.85)) collect(c);
   }
-  for (const f of fotos) f.s.position.y = 1.95 + Math.sin(S.time * 1.8 + f.ph) * 0.07;
+  for (const f of fotos) f.s.position.y = f.y + 1.95 + Math.sin(S.time * 1.8 + f.ph) * 0.07;
 
   // Câmera
   if (!S.started) {
     const a = S.time * 0.07;
-    camera.position.set(54 + Math.sin(a) * 24, 6.5 + Math.sin(a * 1.7) * 1.2, -31 + Math.cos(a * 1.3) * 3.5);
-    camera.lookAt(52, 2.2, -6);
+    camera.position.set(32 + Math.sin(a) * 22, 6.5 + Math.sin(a * 1.7) * 1.2, -31 + Math.cos(a * 1.3) * 3.5);
+    camera.lookAt(30, 2.2, -6);
   } else {
-    const ty = S.inCar ? 1.5 : 1.5, dist = S.dist;
+    const ty = S.y + (S.inCar ? 1.5 : S.camH), dist = S.dist, lv = S.y > 1.9 ? 1 : 0;
     const cp = Math.cos(S.pitch), fx = -Math.sin(S.yaw), fz = -Math.cos(S.yaw);
-    const t = rayWalls(S.x, S.z, -fx * dist * cp, -fz * dist * cp);
+    const t = rayWalls(S.x, S.z, -fx * dist * cp, -fz * dist * cp, lv);
     const want = Math.max(0.5, dist * t - (t < 1 ? 0.22 : 0));
     S.camDist = want < S.camDist ? want : S.camDist + (want - S.camDist) * Math.min(1, dt * 4);
     let cy = ty + S.camDist * Math.sin(S.pitch) + 0.25;
     const cx = S.x - fx * S.camDist * cp, cz = S.z - fz * S.camDist * cp;
-    if (world.indoor(cx, cz)) cy = Math.min(cy, 2.5);
-    camera.position.set(cx, Math.max(0.35, cy), cz);
+    if (world.indoor(cx, cz)) cy = Math.min(cy, S.y + 2.5);
+    camera.position.set(cx, Math.max(S.y + 0.35, cy), cz);
     camT.set(S.x + fx * 0.6, ty + 0.1, S.z + fz * 0.6); camera.lookAt(camT);
     if (player && !S.inCar) player.group.visible = S.camDist > 0.85;
   }
   world.sky.position.copy(camera.position);
+  for (const f of fotos) f.s.material.opacity = clamp((camera.position.distanceTo(f.s.position) - 1.3) / 1.4, 0, 1) * (S.fotos.has(f.id) ? 0.45 : 1);
 
   // HUD
   if (playing) {
-    const z = world.zone(S.x, S.z); if (z !== S.zone) setZone(z);
+    const z = world.zone(S.x, S.z, S.y); if (z !== S.zone) setZone(z);
     target = S.overlay ? null : findTarget();
     el.prompt.hidden = !target; if (target) el.prompt.lastElementChild.textContent = target.label;
     el.btnE.disabled = !target && !S.overlay;
@@ -450,17 +525,19 @@ function drawRadar() {
   g.fillStyle = '#b77a52'; g.fillRect(0, 0, W, W);
   g.translate(R, R); g.rotate(S.yaw); g.scale(s, s); g.translate(-S.x, -S.z);
   for (const q of world.mapRects) { g.fillStyle = q.c; g.fillRect(q.x0, q.z0, q.x1 - q.x0, q.z1 - q.z0); }
+  const up = S.y > 1.9;
+  if (up) { g.fillStyle = 'rgba(23,32,38,.55)'; g.fillRect(S.x - 60, S.z - 60, 120, 120); g.fillStyle = '#ecebe6'; for (const q of world.upRects) g.fillRect(q.x0, q.z0, q.x1 - q.x0, q.z1 - q.z0); }
   g.strokeStyle = '#1c2226'; g.lineWidth = 0.45; g.beginPath();
-  for (const [a, b, c, d] of world.segs) { g.moveTo(a, b); g.lineTo(c, d); }
+  for (const [a, b, c, d] of up ? world.segs1 : world.segs) { g.moveTo(a, b); g.lineTo(c, d); }
   g.stroke();
   const range = R / s + 2;
-  g.fillStyle = '#4a90d2'; for (const f of fotos) if (!S.fotos.has(f.id) && Math.hypot(f.x - S.x, f.z - S.z) < range) g.fillRect(f.x - 0.8, f.z - 0.8, 1.6, 1.6);
-  g.fillStyle = '#fbfaf5'; for (const n of npcs) { g.beginPath(); g.arc(n.x, n.z, 0.7, 0, 7); g.fill(); }
-  for (const c of chips) if (!c.got && Math.hypot(c.x - S.x, c.z - S.z) < range) { g.fillStyle = '#1c2226'; g.beginPath(); g.arc(c.x, c.z, 1.25, 0, 7); g.fill(); g.fillStyle = '#f4b63a'; g.beginPath(); g.arc(c.x, c.z, 0.9, 0, 7); g.fill(); }
-  g.save(); g.translate(car.x, car.z); g.rotate(-car.h); g.fillStyle = '#d3261f'; g.fillRect(-1.1, -2.2, 2.2, 4.4); g.restore();
+  g.fillStyle = '#4a90d2'; for (const f of fotos) if (!S.fotos.has(f.id) && (f.y > 1.9) === up && Math.hypot(f.x - S.x, f.z - S.z) < range) g.fillRect(f.x - 0.8, f.z - 0.8, 1.6, 1.6);
+  g.fillStyle = '#fbfaf5'; if (!up) for (const n of npcs) { g.beginPath(); g.arc(n.x, n.z, 0.7, 0, 7); g.fill(); }
+  for (const c of chips) if (!c.got && (c.y > 1.9) === up && Math.hypot(c.x - S.x, c.z - S.z) < range) { g.fillStyle = '#1c2226'; g.beginPath(); g.arc(c.x, c.z, 1.25, 0, 7); g.fill(); g.fillStyle = '#f4b63a'; g.beginPath(); g.arc(c.x, c.z, 0.9, 0, 7); g.fill(); }
+  if (!up) { g.save(); g.translate(car.x, car.z); g.rotate(-car.h); g.fillStyle = '#d3261f'; g.fillRect(-1.1, -2.2, 2.2, 4.4); g.restore(); }
   if (!S.inCar) { g.translate(S.x, S.z); g.rotate(-S.heading); g.fillStyle = '#fff'; g.strokeStyle = '#1c2226'; g.lineWidth = 0.5; g.beginPath(); g.moveTo(0, 2.6); g.lineTo(1.7, -1.8); g.lineTo(0, -0.8); g.lineTo(-1.7, -1.8); g.closePath(); g.fill(); g.stroke(); }
   g.restore();
-  const nx = R + Math.sin(S.yaw) * (R - 20), ny = R - Math.cos(S.yaw) * (R - 20);
+  const nx = R - Math.sin(S.yaw) * (R - 20), ny = R + Math.cos(S.yaw) * (R - 20);
   g.fillStyle = '#1c2226'; g.beginPath(); g.arc(nx, ny, 15, 0, 7); g.fill();
   g.fillStyle = '#fbfaf5'; g.font = '700 20px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('N', nx, ny + 1);
 }
@@ -482,4 +559,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // Gancho de depuração, útil para testes automatizados e para brincar no console.
-window.DCA = { S, car, chips, world, collect, start, renderer, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) update(dt); } };
+window.DCA = { S, car, chips, world, collect, start, renderer, Snd, camera, step(n = 60, dt = 1 / 60) { for (let i = 0; i < n; i++) update(dt); } };

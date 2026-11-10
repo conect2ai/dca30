@@ -319,6 +319,13 @@ export function makeTextures() {
     g.fillStyle = '#fff'; g.fillRect(26, 12, 12, 36); g.fillRect(20, 20, 24, 6); g.fillRect(22, 50, 20, 5);
   });
 
+  T.elec = tex(96, 96, (g, w, h) => {
+    g.fillStyle = '#f4f4ee'; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#f2c230'; g.strokeStyle = '#1c1c1c'; g.lineWidth = 5; g.lineJoin = 'round';
+    g.beginPath(); g.moveTo(48, 10); g.lineTo(88, 82); g.lineTo(8, 82); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#1c1c1c'; g.beginPath(); g.moveTo(52, 30); g.lineTo(38, 56); g.lineTo(48, 56); g.lineTo(42, 76); g.lineTo(60, 48); g.lineTo(50, 48); g.closePath(); g.fill();
+  });
+
   T.hose = tex(128, 160, (g, w, h) => {
     g.fillStyle = '#c81e1e'; g.fillRect(0, 0, w, h);
     g.fillStyle = '#e9eef2'; g.beginPath(); g.arc(64, 70, 30, 0, 7); g.fill();
