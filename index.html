@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DCA 30 Anos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Explore o prédio do DCA/UFRN em 3D, direto no navegador. Colete os 30 chips dos 30 anos.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,600;0,700;1,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: cena 3D em tela cheia; HUD preso aos quatro cantos; menus com cara de plaquinha de porta do DCA (bloco azul + placa branca). */
+:root {
+  color-scheme: dark;
+  --slate: #172026;        /* cinza-azulado das portas, fundo dos painéis */
+  --slate-2: #24313a;
+  --slate-line: #3a4a55;
+  --wall: #f1ecdc;         /* creme das paredes, texto sobre escuro */
+  --wall-dim: #b9b8ab;
+  --plate: #fbfaf5;        /* branco da plaquinha */
+  --ink: #1c2226;
+  --ufrn: #4a90d2;         /* azul da plaquinha UFRN DCA */
+  --fire: #d3261f;         /* vermelho dos extintores */
+  --chip: #f4b63a;         /* dourado dos chips */
+  --scrim: rgba(13, 19, 23, .78);
+  --font-display: 'Chakra Petch', 'Trebuchet MS', 'Arial Narrow', sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  --gut-l: max(16px, env(safe-area-inset-left, 0px));
+  --gut-r: max(16px, env(safe-area-inset-right, 0px));
+  --gut-t: calc(12px + env(safe-area-inset-top, 0px));
+  --gut-b: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--slate); color: var(--wall); font: 15px/1.45 var(--font-body); overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--chip); outline-offset: 2px; }
+kbd { font: 600 13px var(--font-mono); background: var(--plate); color: var(--ink); border-radius: 4px; padding: 1px 7px; box-shadow: 0 2px 0 var(--wall-dim); }
+
+/* ── HUD ── */
+#hud { position: fixed; inset: 0; pointer-events: none; }
+#hud > * { position: absolute; }
+#counters { top: var(--gut-t); right: var(--gut-r); display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-shadow: 0 2px 0 rgba(0,0,0,.65), 0 0 12px rgba(0,0,0,.5); }
+#chips { font: italic 700 34px/1 var(--font-display); color: var(--chip); display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+#chips i { font-size: 20px; color: var(--wall); }
+#chips.pulse { animation: pulse .45s ease-out; }
+@keyframes pulse { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+.chip-ico { width: 22px; height: 22px; background: var(--ink); border: 3px solid var(--chip); border-radius: 3px; box-shadow: 0 0 0 2px rgba(0,0,0,.4); }
+#fotos { font: 600 15px var(--font-display); letter-spacing: .04em; text-transform: uppercase; color: var(--wall); font-variant-numeric: tabular-nums; }
+#fotos b { color: var(--ufrn); }
+#zone { right: var(--gut-r); bottom: var(--gut-b); font: italic 700 clamp(22px, 3.4vw, 38px)/1.05 var(--font-display); color: var(--wall); text-align: right; text-shadow: 0 3px 0 rgba(0,0,0,.7), 0 0 18px rgba(0,0,0,.55); opacity: 0; transition: opacity .6s; max-width: 60vw; }
+#zone.on { opacity: 1; }
+#radar { left: var(--gut-l); bottom: var(--gut-b); width: 150px; height: 150px; border-radius: 50%; box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px var(--wall-dim), 0 6px 18px rgba(0,0,0,.5); }
+#prompt { left: 50%; bottom: calc(var(--gut-b) + 86px); transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: var(--scrim); padding: 7px 14px 7px 9px; border-radius: 6px; font: 600 15px var(--font-body); white-space: nowrap; }
+#sub { left: 50%; bottom: calc(var(--gut-b) + 10px); transform: translateX(-50%); width: min(640px, calc(100% - 200px)); text-align: center; text-shadow: 0 2px 0 #000, 0 0 10px rgba(0,0,0,.9); font: 500 17px/1.35 var(--font-body); }
+#sub b { display: block; font: 700 13px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--chip); }
+#sub p { margin: 0; }
+#toast { box-sizing: border-box; left: 50%; top: var(--gut-t); transform: translateX(-50%); background: var(--plate); color: var(--ink); border-left: 10px solid var(--ufrn); padding: 8px 16px; font: 600 15px var(--font-body); border-radius: 3px; box-shadow: 0 6px 18px rgba(0,0,0,.45); max-width: min(520px, calc(100% - 32px)); text-align: left; }
+#sysbtns { top: var(--gut-t); left: var(--gut-l); display: flex; gap: 8px; pointer-events: auto; }
+#sysbtns button { background: var(--scrim); border: 1px solid var(--slate-line); border-radius: 6px; padding: 6px 12px; font: 600 13px var(--font-display); letter-spacing: .06em; text-transform: uppercase; }
+#touch { inset: 0; }
+#joy { position: absolute; left: var(--gut-l); bottom: var(--gut-b); width: 132px; height: 132px; border-radius: 50%; background: rgba(23,32,38,.45); border: 2px solid rgba(241,236,220,.5); pointer-events: auto; touch-action: none; }
+#joy i { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px; border-radius: 50%; background: rgba(241,236,220,.85); }
+#btn-e { position: absolute; right: var(--gut-r); bottom: calc(var(--gut-b) + 8px); width: 84px; height: 84px; border-radius: 50%; border: 3px solid var(--ink); background: var(--chip); color: var(--ink); font: 700 30px var(--font-display); pointer-events: auto; touch-action: none; box-shadow: 0 5px 0 rgba(0,0,0,.45); }
+#btn-e:disabled { background: rgba(23,32,38,.45); color: rgba(241,236,220,.5); border-color: rgba(241,236,220,.4); box-shadow: none; }
+body.touch #radar { top: calc(var(--gut-t) + 44px); bottom: auto; width: 104px; height: 104px; }
+body.touch #zone { bottom: auto; top: calc(var(--gut-t) + 64px); font-size: 20px; }
+body.touch #prompt { bottom: calc(var(--gut-b) + 150px); }
+body.touch #sub { bottom: calc(var(--gut-b) + 104px); width: calc(100% - 32px); font-size: 15px; }
+body.touch #toast { top: calc(var(--gut-t) + 158px); width: max-content; font-size: 14px; }
+@media (orientation: landscape) { body.touch #toast { top: var(--gut-t); max-width: 42%; } }
+
+/* ── Menu ── */
+#menu { position: fixed; inset: 0; display: flex; background: linear-gradient(90deg, var(--scrim) 0, var(--scrim) 380px, rgba(13,19,23,0) 760px); }
+.panel { box-sizing: border-box; width: min(470px, 100%); height: 100%; overflow-y: auto; padding-block: calc(18px + env(safe-area-inset-top, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)); padding-left: max(22px, env(safe-area-inset-left, 0px)); padding-right: max(22px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 14px; background: var(--slate); border-right: 1px solid var(--slate-line); box-shadow: 12px 0 40px rgba(0,0,0,.45); }
+.panel > * { flex-shrink: 0; }
+.plate { display: grid; grid-template-columns: auto 1fr; background: var(--plate); color: var(--ink); border-radius: 3px; overflow: hidden; box-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.plate-blue { background: var(--ufrn); color: #fff; padding: 12px 14px; font: 700 26px/1 var(--font-body); display: flex; flex-direction: column; gap: 2px; }
+.plate-blue small { font: 600 13px var(--font-body); margin-top: 8px; }
+.plate-white { padding: 12px 16px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+h1 { margin: 0; font: italic 700 clamp(30px, 8vw, 40px)/1 var(--font-display); letter-spacing: .01em; text-wrap: balance; }
+.plate-white p { margin: 6px 0 0; font: 600 14px var(--font-body); color: #4b565d; }
+.eyebrow { font: 700 12px var(--font-display); letter-spacing: .14em; text-transform: uppercase; color: var(--chip); margin: 0 0 6px; }
+.brief p { margin: 0; color: var(--wall); max-width: 46ch; }
+.chars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.char { background: var(--slate-2); border: 2px solid transparent; border-radius: 6px; padding: 4px 4px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; min-width: 0; }
+.char img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; display: block; }
+.char b { font: 700 14px var(--font-display); letter-spacing: .03em; }
+.char span { font-size: 11.5px; line-height: 1.25; color: var(--wall-dim); }
+.char[aria-pressed="true"] { border-color: var(--chip); background: #2e3d47; }
+.go { background: var(--fire); color: #fff; border: 0; border-radius: 6px; padding: 14px 18px; font: italic 700 22px var(--font-display); letter-spacing: .03em; box-shadow: 0 4px 0 #7d1410; }
+.go:active { transform: translateY(3px); box-shadow: 0 1px 0 #7d1410; }
+.keys { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--wall-dim); margin: 0; padding: 0; list-style: none; }
+.foot { margin: auto 0 0; font-size: 12px; color: var(--wall-dim); }
+
+/* ── Sobreposições ── */
+.over { position: fixed; inset: 0; display: grid; place-items: center; background: var(--scrim); padding-block: 20px; padding-left: var(--gut-l); padding-right: var(--gut-r); }
+#foto figure { margin: 0; background: var(--plate); color: var(--ink); padding: 12px 12px 14px; border-radius: 3px; box-shadow: 0 16px 50px rgba(0,0,0,.6); transform: rotate(-1.2deg); max-height: 100%; display: flex; flex-direction: column; gap: 10px; box-sizing: border-box; }
+#foto img { display: block; align-self: center; max-height: min(70vh, 640px); max-width: min(100%, 400px); object-fit: contain; background: var(--slate-2); }
+#foto figcaption { font: 600 15px var(--font-body); display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+#foto figcaption span { font: 700 11px var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: var(--ufrn); white-space: nowrap; }
+#term pre { margin: 0; width: min(560px, 100%); box-sizing: border-box; min-height: 250px; background: #0b1220; color: #58e08a; border: 10px solid #23272c; border-radius: 10px; padding: 18px; font: 500 15px/1.55 var(--font-mono); white-space: pre-wrap; box-shadow: 0 16px 50px rgba(0,0,0,.6); }
+.hint { position: absolute; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0; text-align: center; font-size: 13px; color: var(--wall-dim); }
+#fim { text-align: center; }
+#fim .box { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+#fim h2 { margin: 0; font: italic 700 clamp(40px, 9vw, 86px)/.95 var(--font-display); color: var(--chip); text-shadow: 0 5px 0 rgba(0,0,0,.7); text-wrap: balance; }
+#fim p { margin: 0; font: 600 18px var(--font-body); }
+#fim .stats { font: 500 15px var(--font-mono); color: var(--wall-dim); }
+#confete { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#erro { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; background: var(--slate); }
+
+@media (max-width: 620px) {
+  #menu { background: var(--scrim); }
+  .panel { width: 100%; border-right: 0; background: rgba(23,32,38,.92); }
+  #sub { width: calc(100% - 32px); }
+}
+@media (max-height: 520px) { #radar { width: 104px; height: 104px; } .panel { gap: 12px; } }
+@media (prefers-reduced-motion: reduce) { #chips.pulse { animation: none; } #zone { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="game" tabindex="0" aria-label="Cena 3D do prédio do DCA"></canvas>
+
+<div id="hud" hidden>
+  <div id="counters">
+    <div id="chips" aria-live="polite"><span class="chip-ico"></span><span><b id="chip-n">00</b><i>/30</i></span></div>
+    <div id="fotos">Fotos <b id="foto-n">0</b>/7</div>
+  </div>
+  <div id="zone"></div>
+  <canvas id="radar" width="300" height="300" aria-hidden="true"></canvas>
+  <div id="prompt" hidden><kbd>E</kbd><span></span></div>
+  <div id="sub" hidden aria-live="polite"><b></b><p></p></div>
+  <div id="toast" hidden></div>
+  <div id="sysbtns"><button id="btn-menu" type="button">Menu</button><button id="btn-som" type="button" aria-pressed="true">Som ligado</button></div>
+  <div id="touch" hidden>
+    <div id="joy" aria-label="Alavanca de movimento"><i></i></div>
+    <button id="btn-e" type="button" aria-label="Interagir" disabled>E</button>
+  </div>
+</div>
+
+<section id="menu" aria-label="Menu inicial">
+  <div class="panel">
+    <div class="plate">
+      <div class="plate-blue">UFRN<br>DCA<small>Sala 30</small></div>
+      <div class="plate-white"><h1 id="titulo">DCA 30 ANOS</h1><p id="subtitulo">Grande Tour da Automação</p></div>
+    </div>
+    <div class="brief">
+      <p class="eyebrow">Missão 01 · Trinta anos, trinta chips</p>
+      <p>Trinta chips dourados estão espalhados pelo prédio, um para cada ano. Encontre todos, visite os pontos de foto e pegue o carro no estacionamento dos fundos.</p>
+    </div>
+    <div>
+      <p class="eyebrow">Quem vai explorar</p>
+      <div class="chars" id="chars"></div>
+    </div>
+    <button class="go" id="btn-go" type="button">Entrar no DCA</button>
+    <ul class="keys" id="keys-desk">
+      <li><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> andar</li>
+      <li><kbd>Shift</kbd> correr</li>
+      <li><kbd>E</kbd> interagir</li>
+      <li>Arraste o mouse para olhar</li>
+      <li><kbd>←</kbd> <kbd>→</kbd> girar a câmera</li>
+    </ul>
+    <ul class="keys" id="keys-touch" hidden>
+      <li>Alavanca à esquerda para andar</li>
+      <li>Arraste a tela para olhar</li>
+      <li>Botão E para interagir</li>
+    </ul>
+    <p class="foot" id="evento"></p>
+  </div>
+</section>
+
+<div id="foto" class="over" hidden>
+  <figure><img alt=""><figcaption><b></b><span>Foto real do DCA</span></figcaption></figure>
+  <p class="hint">Toque ou aperte E para voltar ao jogo</p>
+</div>
+<div id="term" class="over" hidden>
+  <pre aria-live="polite"></pre>
+  <p class="hint">Toque ou aperte E para sair do computador</p>
+</div>
+<div id="fim" class="over" hidden>
+  <canvas id="confete"></canvas>
+  <div class="box">
+    <p class="eyebrow">Missão 01 concluída</p>
+    <h2>MISSÃO CUMPRIDA</h2>
+    <p>30 chips. 30 anos. Parabéns, DCA!</p>
+    <p class="stats" id="fim-stats"></p>
+    <button class="go" id="btn-fim" type="button">Continuar explorando</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
